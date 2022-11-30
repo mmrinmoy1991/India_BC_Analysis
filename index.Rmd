@@ -1,0 +1,410 @@
+---
+title: "Analysis of India's BC Data"
+author: "Mrinmoy Chakraborty"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse) # data wrangling package
+library(here) # file location package
+library(openair) # air pollution data analysis package
+library(ggpmisc) # statistical fitting package
+library(ggpubr) # ggplot extension
+library(stars) # spatio-temporal arrays
+library(ncdf4) # netCDF4 data
+library(sf) # spatial vector data
+library(tmap) # geo-plotting package
+#library(raster)# geo-vector data package
+library(leaflet) # map plotting package
+library(knitr) # pretty table
+library(kableExtra)
+
+```
+
+# Introduction
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# Get India District Level Data
+in_d <- raster::getData('GADM', country='IND', level=2)# Level=2 for district level map
+
+## Population Density
+popul_den = read_ncdf(here("02_data/AQ3_Popul_IGP.nc"))
+
+## Simulated BC by Verma 2022
+simulated_BC = read_ncdf(here("02_data/AQ3_388_bc_30d_mean.nc"))
+
+## Station Location in Our Study
+station_location = read_csv(here("02_data/AQ1_StationCoordinates.csv"))
+
+```
+
+
+# Moniroting Station
+## Location Details
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+station_location %>% 
+  kbl(.) %>% 
+  kable_styling()
+```
+
+## Stations in Map
+```{r echo=FALSE, include=FALSE}
+leaflet() %>% 
+  addProviderTiles(provider = "Stamen.Toner") %>% 
+  setView(lng = 80.4, lat = 26.3, zoom = 8) %>% 
+  addMarkers(lng = station_location$Long, 
+                      lat = station_location$Lat,
+                      group = station_location$AQ_Type,
+                      label = station_location$Location,
+                      labelOptions = labelOptions(noHide = T,
+                                                  style = list(
+                                                    "color" = "red",
+                                                    "font-family" = "serif",
+                                                    "font-style" = "bold",
+                                                    "box-shadow" = "3px 3px rgba(0,0,0,0.25)",
+                                                    "font-size" = "16px",
+                                                    "border-color" = "rgba(0,0,0,0.5)"))) %>% 
+  addPolygons(data = in_d, weight = 1, fill = FALSE, color = "#b85937") %>% 
+  addMiniMap(position = "bottomright")
+```
+
+
+
+
+```{r echo=FALSE}
+# Detach Raster Package
+#detach("package:raster")
+
+```
+
+## Household and Village Details
+
+We considered one household from each village. These two households were set up for indoor monitoring in addition to outdoor monitoring in the village center.
+
+### Building Structure
+```{r echo=FALSE,out.width="49%",out.height="49%",fig.show="hold", fig.cap= "Household Structure"}
+knitr::include_graphics(c(here("Graphic/Village1_HH.png"),here("Graphic/Village2_HH.png")))
+#knitr::include_graphics(here("Graphic/Village2_HH.png"))
+
+```
+
+### Survey Results
+```{r echo=FALSE}
+
+## Compiling Survey Data
+survey_data <- tibble(
+  Parameter = c("Population", "Prim CookFuel", "Sec CookFuel","Kitchen Type", "LPG Conn", "No. Meals"),
+  Village1_HH = c("A2C0", "Dung Cake", "Kerosene/Firewood","Indoor", "Yes", "2"),
+  Village2_HH = c("A5C2", "Dunc Cake", "Diesel", "Outdoor Enclosed Kitchen", "Yes", "2")
+)
+
+# Print Survey result in a table
+survey_data %>%   
+  kbl(.) %>% 
+  kable_styling()
+```
+
+
+# AQ Data 
+
+Several data sets were utilized in this study. 
+
+1. **Rural Monitoring**
+  - Temporal Frequency: 5 min 
+  - Bhawani Kheda (Village 1) and Naikani Kheda (Village 2)
+  - Household Indoor Air Quality
+  - Village Outdoor Air Quality
+  - Pollutants: (*Raw data considered*)
+    * **RAMP**: PM2.5, CO, Temperature (T), Relative Humidity (RH)
+    * **MA300**: BC, BCbb (biomass burning component), BCff (fossil fuel component), AAE (Angstrom Exponent), pctBB (BCbb percentage of total BC)
+    
+2. **Regulatory Monitoring**
+  - LKO_Sch: CPCB monitoring station in Lucknow Central School
+    * Pollutants: PM2.5, CO, Temperature (AT), Relative Humidity (RH), NO, NOx, Ozone
+    * Temporal Frequency: 15 min
+    * Distance from Rural Monitoring: 59 km
+  - LKO_Ind: CPCB monitoring station in Talkatora Industrial Belt
+    * Pollutants: PM2.5, CO, Temperature (AT), Relative Humidity (RH), NO, NOx, NO2, SO2
+    * Temporal Frequency: 15 min
+    * Distance from Rural Monitoring: 59 km
+  - KNP: CPCB monitoring station in Kanpur Neheru Nagar
+    * Pollutants: PM2.5, Temperature (AT), Relative Humidity (RH), NO, NOx, Ozone
+    * Temporal Frequency: 1 hour
+    * Distance from Rural Monitoring: 12 km
+  - IGPCARE: Long term monitoring station in a rural site in a nearby district
+    * *Data not available publicly*
+    * Pollutants: BC, BrC (Brown Carbon), O3, PM2.5
+    * Rural regulatory monitoring site
+    * operated by University of Gothenburg (Dr. Ravi Kant Pathak)
+    * Distance from Present Rural Monitoring: 93 km
+    * Note: Useful for comparing trends in rural BC pollution (MA300 vs AE)
+    * Related Publication: https://pubs.rsc.org/en/content/articlehtml/2022/ea/d1ea00083g 
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+## Load Data
+# ----> RAMP and BC Data <---- #
+field_data = read_csv(here("02_data/AQ2_RAMP_MA300_Merged_5minutes.csv"))
+
+# ----> Reference Data <---- #
+ref_Lk_Sch = read_csv(here("02_data/AQ1_CentralSchoolLucknow.csv"))
+## parse datetime
+ref_Lk_Sch$date = as.POSIXct(ref_Lk_Sch$date, format = "%d-%m-%Y %H:%M", tz = "UTC")
+
+# ----> Reference Data <---- #
+ref_Lk_Ind = read_csv(here("02_data/AQ1_TalkatraIndustryLucknow.csv"))
+## parse datetime
+ref_Lk_Ind$date = as.POSIXct(ref_Lk_Ind$date, format = "%d-%m-%Y %H:%M", tz = "UTC")
+
+# ----> Reference Data <---- #
+ref_Knp = read_csv(here("02_data/AQ1_NeheruNagarKanpur.csv"))
+## parse datetime
+ref_Knp$date = as.POSIXct(ref_Knp$date, format = "%d-%m-%Y %H:%M", tz = "UTC")
+```
+
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+#1: Remove outliers in the data using IQR criteria
+field_data_OutlierRemoved = subset(field_data,
+                    subset = !(eBC_corrected %in% boxplot.stats(eBC_corrected)$out))
+
+#2: Change "eBC_Corrected" to "eBC"
+names(field_data_OutlierRemoved)[names(field_data_OutlierRemoved) == "eBC_corrected"] <- "eBC"
+
+#3: Select only B0, B2, N0, N2 and Rename
+HH = field_data_OutlierRemoved %>% 
+  filter(House %in% c("B0","B2","N0","N2")) %>% 
+  mutate(House = factor(case_when(House == "B0" ~ "Village1_Outdoor",
+                                  House == "B2" ~ "Village1_Indoor",
+                                  House == "N0" ~ "Village2_Outdoor",
+                                  TRUE ~ "Village2_Indoor"), 
+                        levels = c("Village1_Outdoor","Village1_Indoor",
+                                   "Village2_Outdoor","Village2_Indoor")))
+
+#4: Select Required Parameters
+HH_1 = HH %>%  
+  select(House, MA300, date, dDate, PM2.5, CO, CO2, RH, T, eBC, 
+         AbsBC_babs_ff_BI, AbsBC_babs_bb_BI, AAE_Blue_IR)
+
+#5: Estimate BCbb an BCff
+HH_2 = HH_1 %>% mutate(BCbb = AbsBC_babs_ff_BI/10.12,
+                       BCff = AbsBC_babs_bb_BI/10.12) %>%
+  select(-c(AbsBC_babs_ff_BI,AbsBC_babs_bb_BI))
+
+#6: BC mass closure
+HH_3 = HH_2 %>% 
+  mutate(check = eBC-(BCbb+BCff),
+         BC = eBC+check,
+         BB = 100*BCbb/BC,
+         BC_PM = 100*BC/PM2.5,
+         BCbb_PM = 100*BCbb/PM2.5,
+         BCff_PM = 100*BCff/PM2.5,
+         DayType = chron::is.weekend(date),
+         time = as.POSIXct(date, format = "%H:%M"), 
+         hour = as.integer(format(time, '%H')), 
+         DayPart  = factor(case_when(between(hour, 6, 11) ~ "Morning", 
+                              between(hour, 12, 15) ~"Afternoon", 
+                              between(hour, 16, 19) ~"Evening", 
+                              TRUE ~"Night"),
+                           levels = c("Morning","Afternoon","Evening","Night")),
+         activity = factor(case_when(between(hour,5, 9)~ "MrngCook",
+                              between(hour, 17, 20)~ "EvngCook",
+                              TRUE ~"NoCook"),
+                           levels = c("MrngCook","EvngCook","NoCook"))) %>% 
+  select(!time)
+```
+
+Number of data points measured in Village
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+#7: Estimate Positive and Negative Data
+HH_3 %>% 
+  group_by(House) %>% 
+  summarise(n=n(),
+            positive = 100*sum(BCff>0)/n(),
+            negative = 100*sum(BCbb<0)/n()) %>% 
+  mutate(across(where(is.numeric), ~ round(., 1))) %>% 
+  kbl(.) %>% 
+  kable_styling()
+```
+
+
+
+## Summary Statisics
+
+Here I am focusing on the combustion generated pollutants, i.e. PM2.5, BC and CO. The mean concentration and coefficient of variation (standard deviation/mean) have been calculated and presented for indoor and outdoor in village 1 and 2. 
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+HH_3 %>% select(House, PM2.5, CO, BC) %>% 
+  group_by(House) %>% 
+    summarise(meanPM2.5 = mean(PM2.5,na.rm=TRUE),
+              covPM2.5 = sd(PM2.5, na.rm = TRUE)/meanPM2.5,
+              meanBC = mean(BC,na.rm=TRUE),
+              covBC = sd(BC, na.rm = TRUE)/meanBC,
+              meanCO = mean(CO,na.rm=TRUE),
+              covCO = sd(CO, na.rm = TRUE)/meanCO) %>% 
+  kable(digits = 2) %>% 
+  kable_styling()
+
+```
+
+Note:
+
+1. Units: PM2.5 and BC are in $\mu g/m^3$; CO in *ppb*
+2. Fill Here 
+
+## Visualize Diurnal Change in Pollutants
+
+### Diurnal PM2.5
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+plotTV_PM2.5 = HH_3 %>% timeVariation(pollutant = "PM2.5", group = "House")
+
+```
+
+### Diurnal CO
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+plotTV_CO = HH_3 %>% timeVariation(pollutant = "CO", group = "House")
+
+```
+
+### Diurnal BC
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+plotTV_CO = HH_3 %>% timeVariation(pollutant = "BC", group = "House")
+
+```
+
+
+## Reference measurement vs RAMP data
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+HH_hour = HH_3 %>% timeAverage(.,avg.time = "hour", 
+                                start.date = "2019-11-13 14:00:00", fill = TRUE,
+                                type = "House")
+
+unnaoHour = HH_hour %>% filter(House %in% c("Village1_Outdoor", "Village2_Outdoor")) %>% 
+  select(date, House, PM2.5, CO, T, RH)
+
+kanpurHour = ref_Knp %>% select(date, PM2.5, CO, AT, RH)
+
+unnaoHour %>% select(date, House, PM2.5) %>% 
+  #pivot_wider(names_from = "House", values_from = "PM2.5") %>% 
+  inner_join(kanpurHour, by="date") %>% 
+  ggplot(.,aes(x = PM2.5.y, y = PM2.5.x, group = House, color = House))+
+  geom_point()+
+  geom_abline(slope=1, intercept = 0,linetype=2, color = "red")+
+  geom_smooth(method = "lm", formula = y ~ x-1, size = 0.5, 
+              se=FALSE, fullrange = TRUE)+
+  stat_poly_eq(method = "lm", formula = y ~ x-1, 
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "*`,`~")), 
+               parse = TRUE,
+               label.x.npc = "right",
+               label.y.npc = "bottom",
+               vstep = 0.05, size = 3)+
+  labs(x = "Reference Monitoring at Kanpur", y = "RAMP PM2.5")+
+  theme_pubr()
+```
+
+## Analysis of BC concentration
+
+### BC concentration by activity period
+```{r echo=TRUE}
+HH_3 %>% ggplot(.,aes(x = activity, y = BC))+
+  geom_boxplot()+
+  theme_pubr()
+```
+### BC concentration by Location~Activity
+```{r echo=TRUE}
+HH_3 %>% ggplot(.,aes(x = activity, y = BC, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+### BC concentration by DayPart~Activity
+```{r echo=TRUE}
+HH_3 %>% ggplot(.,aes(x = DayPart, y = BC, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+## Source Apportionment Results
+
+### BCbb by Location~Activity
+```{r echo=TRUE}
+HH_3 %>% ggplot(.,aes(x = activity, y = BCbb, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+### BCff by DayPart~Activity
+```{r echo=TRUE}
+HH_3 %>% ggplot(.,aes(x = DayPart, y = BCff, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+
+
+## Spatial Data
+
+### Map of Population Density
+
+```{r}
+r = raster::raster("02_data/AQ3_Popul_IGP.nc")
+
+pal <- colorBin(c("#8D5524", "#FFDBAC"), raster::values(r),
+                bins = 5, na.color = "transparent")
+
+raster::crs(r) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+
+leaflet() %>% addTiles() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+  addRasterImage(r, colors = pal, opacity = 0.8) %>%
+  addLegend(pal = pal, values = raster::values(r),
+    title = "Popul Den") %>% 
+  addPolygons(data = in_d, weight = 1, fill = FALSE, color = "#120f01") %>% 
+  fitBounds(76, 30, 89, 21)
+
+
+```
+
+### Map of Simulated BC by Verma 2022
+```{r}
+r = raster::raster("02_data/AQ3_388_bc_30d_mean.nc")
+pal <- colorBin(c("#8D5524", "#FFDBAC"), raster::values(r),
+                bins = 5, na.color = "transparent")
+
+raster::crs(r) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+
+leaflet() %>% addTiles() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+  addRasterImage(r, colors = pal, opacity = 0.8) %>%
+  addLegend(pal = pal, values = raster::values(r),
+    title = "Simulated BC") %>% 
+  addPolygons(data = in_d, weight = 1, fill = FALSE, color = "#120f01") %>% 
+  fitBounds(76, 30, 89, 21)
+```
+
+
+
+# Reference
+
+Getting raster data: https://dummydatascientist.wordpress.com/2017/03/24/visualization-for-district-level-geospatial-data-in-r-india-census-2001/
