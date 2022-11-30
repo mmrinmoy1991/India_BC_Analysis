@@ -369,7 +369,7 @@ HH_3 %>% ggplot(.,aes(x = DayPart, y = BCff, fill = House))+
 
 ### Map of Population Density
 
-```{r}
+```{r echo=FALSE, include=FALSE}
 r = raster::raster("02_data/AQ3_Popul_IGP.nc")
 
 pal <- colorBin(c("#8D5524", "#FFDBAC"), raster::values(r),
@@ -388,7 +388,7 @@ leaflet() %>% addTiles() %>% addProviderTiles(providers$CartoDB.Positron) %>%
 ```
 
 ### Map of Simulated BC by Verma 2022
-```{r}
+```{r echo=FALSE, include=FALSE}
 r = raster::raster("02_data/AQ3_388_bc_30d_mean.nc")
 pal <- colorBin(c("#8D5524", "#FFDBAC"), raster::values(r),
                 bins = 5, na.color = "transparent")
