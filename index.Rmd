@@ -30,11 +30,87 @@ library(tmap) # geo-plotting package
 library(leaflet) # map plotting package
 library(knitr) # pretty table
 library(kableExtra)
+library(psych)
+library(Hmisc)
 
 ```
 
 # Introduction
 
+## Motivation: Indoor Air Exposure
+
+* Black Carbon, PM2.5 and CO are major pollutant from indoor emissions
+* Prime Source of indoor emission is Cooking - using **Solid Biomass Fuel (SBF)**
+* SBF use is common in LMICs like India, particularly the **rural households** (80% population)
+* Cooking Emission can be as high as 20 times of the background concentration
+* Factors that effect the exposure to indoor pollutants
+  - Fuel usage in cooking
+  - Type of cooking setup (oven type and kitchen type)
+  - Household ventilation
+  - Food choices and cooking time
+* Primary emission reduction can be achieved by adopting clean fuels such as **LPG**
+* However, affordability and fuel-stacking remains a big challenge
+* Community and Household level **actionable measures** can be a solution to reduce exposure
+* Very **limited** BC monitoring data from rural communities
+
+## Black Carbon - Measurement Challanges
+
+* BC is component of combustion derived particulate matter (PM)
+* BC is a strong absorber of solar radiation, with 20 year GWP of **4470**
+* BC has also been identified as a **toxic pollutant** - can impact human organ growth
+* Monitoring BC is a big challenge
+  - No particular chemical definition
+  - BC/EC/Soot measurement techniques
+    - **Aethalometer**: Real-time Light absorption measurement at 880nm
+      - Real-time analysis
+      - Correction schemes have been thoroughly studied and developed
+      - Multi-wavelength light absorption data facilitates Source Apportionment of BC.
+      - Artifacts: Scattering by particles, Loading effects on filter
+    - **EC-OC Analyzer**: Thermal-optical technique
+      - Semi real-time analysis on sampled aerosol filter
+      - OC quantification
+    - **Photo-Acoustic Measurement**: Optical characterization
+      - Suspended aerosol particle
+      - Free from loading effect
+      - Measures aerosol light scattering
+    - **Single Particle Soot Photometer (SP2)**: Laser Induced Incandescence
+      - High accuracy, sensitivity (in Femtograms) and rich dataset
+      - Size range: 200-1500 nm
+      - particle sizing capability
+  - However, 
+    - SP2, PAAS, EC-OC can be very expensive - not adoptable in certain situations
+    - May not be suitable for **field deployment with limited logistics** (e.g. rural setup)
+    - Aethalometers are **widely used** for regulatory grade BC measurement, ease of use.
+    - Latest **micro-Aethalometer** can be a solution in field deployment
+
+## Source Apportionment from Aethalometer Data
+
+* Aethalometer Measurement Process:
+  - light attenuation -> absorption coefficient $b_{abs}$ -> apply correction -> BC mass concentration
+  - Source of uncertainty:
+    - Loading correction scheme utilized 
+    - Fixed scattering correction 
+    - Use of fixed **Mass Absorption Cross Section (MAC)**
+* Source Apportionment Process:
+  - Majorly based on Absorption Angstrom Exponent (AAE): a quantity to measure the spectral dependence of light absorption by aerosols.
+$$ b_{abs} = k \times \lambda^{-\alpha} $$
+  - From a multi-wavelength aethelomater $\alpha$ can be derived from log-linear regression fit between $b_{abs}$ and $\lambda$ (wavelength)
+
+```{r echo=FALSE,fig.cap= "Sample AAE Estimation"}
+knitr::include_graphics(here("Graphic/babs_AE33_01.jpg"))
+```    
+  
+  - **Sandradewi 2008** -> Aethalometer Model
+    - Two component based apportionment : Fossil Fuel (FF) and Biomass Burning (BB)
+$$ b_{abs}(\lambda) = b_{abs,FF}(\lambda) + b_{abs,BB}(\lambda) $$    
+    - Uses fixed $\alpha$ values for FF ($\alpha_{FF}$) and BB ($\alpha_{BB}$) to segregate the light absorption component
+    
+### Equations
+```{r echo=FALSE,fig.cap= "Source Apportionment Equations"}
+knitr::include_graphics(here("Graphic/SA_equation.png"))
+```    
+
+    
 
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 # Get India District Level Data
@@ -52,6 +128,27 @@ station_location = read_csv(here("02_data/AQ1_StationCoordinates.csv"))
 ```
 
 
+# This Study
+
+### Campaign Photos
+```{r echo=FALSE,out.width="49%",out.height="49%",fig.show="hold", fig.cap= "Pollution Monitoring in Indian Villages"}
+knitr::include_graphics(c(here("Graphic/Ambient_Monitoring_Photo.jpeg"),here("Graphic/Indoor_Monitoring_Photo.JPG")))
+#knitr::include_graphics(here("Graphic/Village2_HH.png"))
+
+```
+
+* Rural Household emissions were characterized
+* RAMP (**non-calibrated** PM2.5 and CO) and MA300 devices were used
+* **MA300**
+  - Micro-aethalometer: light weight and portable.
+  - 5 wavelength measurement: 370, 470, 528, 625, 880
+  - Sampling Flow Rate: 150 mL/min
+  - Data Collection Frequency: 5 min
+* 3 X MA300 were deployed in two villages for indoor and outdoor monitoring.
+* Participant Survey conducted for fuel usage, cooking practices
+* Participant's Building structures were mapped
+  
+
 # Moniroting Station
 ## Location Details
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
@@ -61,7 +158,7 @@ station_location %>%
   kable_styling()
 ```
 
-## Stations in Map
+## Stations in Map (Not included)
 ```{r echo=FALSE, include=FALSE}
 leaflet() %>% 
   addProviderTiles(provider = "Stamen.Toner") %>% 
@@ -93,7 +190,8 @@ leaflet() %>%
 
 ## Household and Village Details
 
-We considered one household from each village. These two households were set up for indoor monitoring in addition to outdoor monitoring in the village center.
+* We considered one household from each village. 
+* These two households were set up for indoor monitoring in addition to outdoor monitoring in the village center.
 
 ### Building Structure
 ```{r echo=FALSE,out.width="49%",out.height="49%",fig.show="hold", fig.cap= "Household Structure"}
@@ -226,10 +324,14 @@ HH_3 = HH_2 %>%
                               between(hour, 17, 20)~ "EvngCook",
                               TRUE ~"NoCook"),
                            levels = c("MrngCook","EvngCook","NoCook"))) %>% 
-  select(!time)
+  select(!time) %>% 
+  filter(BC>0.8)
 ```
 
-Number of data points measured in Village
+
+* Number of data points measured in Village
+
+
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 #7: Estimate Positive and Negative Data
 HH_3 %>% 
@@ -244,11 +346,10 @@ HH_3 %>%
 
 
 
-## Summary Statisics
+## Pollutant Summary Statisics
 
 Here I am focusing on the combustion generated pollutants, i.e. PM2.5, BC and CO. The mean concentration and coefficient of variation (standard deviation/mean) have been calculated and presented for indoor and outdoor in village 1 and 2. 
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
-
 HH_3 %>% select(House, PM2.5, CO, BC) %>% 
   group_by(House) %>% 
     summarise(meanPM2.5 = mean(PM2.5,na.rm=TRUE),
@@ -259,16 +360,363 @@ HH_3 %>% select(House, PM2.5, CO, BC) %>%
               covCO = sd(CO, na.rm = TRUE)/meanCO) %>% 
   kable(digits = 2) %>% 
   kable_styling()
+```
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+HH_3 %>% 
+  group_by(House) %>% 
+  get_summary_stats(c(BC,PM2.5,CO), type = "mean_sd") %>% 
+  arrange(variable)
 
 ```
 
-Note:
 
-1. Units: PM2.5 and BC are in $\mu g/m^3$; CO in *ppb*
-2. Fill Here 
+Note: PM2.5 and BC are in $\mu g/m^3$; CO in *ppb*
 
-## Visualize Diurnal Change in Pollutants
+* Summary stat does not reflect difference - proposed 
+Hypothesis generating: 
 
+* Range and variability in household - ventilation
+* BC is local not PM2.5 - we are more confident
+
+
+
+
+## Analysis of BC concentration
+
+Making a new data set for analysis
+
+```{r}
+HH_4 = HH_3 %>% 
+  separate(House, into = c("Village","Position"), sep = "_", remove = FALSE) %>%
+  select(House,Village, Position, date, dDate, hour, PM2.5, BC, BCbb, BCff, AAE_Blue_IR, DayType, DayPart, activity)
+```
+
+
+### Days of Sampling
+```{r}
+HH_4 %>% group_by(Village,activity) %>% 
+  summarise(n = n_distinct(dDate))
+```
+
+
+### Indoor to Indoor Correlation
+
+### Indoor to Outdoor Correlation
+
+### Outdoor to Outdoor Correlations
+
+### All correaltion
+
+```{r}
+
+hourlyBC = HH_4 %>% select(House, hour, activity, BC) %>% 
+  group_by(hour, House, activity)%>% 
+  summarise(meanBC = mean(BC, na.rm=TRUE)) %>% 
+  pivot_wider(names_from = "House", values_from = "meanBC")
+
+my_cols <- c("#00AFBB", "#E7B800", "#FC4E07")  
+pairs(hourlyBC[,3:6], pch = 19,  cex = 0.5,
+      col = my_cols[hourlyBC$activity],
+      lower.panel=NULL)
+
+pairs.panels(hourlyBC[,3:6],
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB",
+             density = TRUE,  # show density plots
+             ellipses = TRUE # show correlation ellipses
+              )
+
+```
+
+
+
+```{r}
+HH_4 %>% group_by(Village, Position, hour) %>%
+  select(hour, Village, Position, BC, activity) %>% 
+  mutate(row = row_number()) %>% 
+  pivot_wider(names_from = "Position", values_from = "BC") %>% 
+  mutate(IO_BC = Indoor/Outdoor) %>% 
+  group_by(hour, Village, activity) %>% 
+  summarise(meanIO = mean(IO_BC, na.rm=TRUE)) %>% 
+  ggplot(.,aes(x = hour, y = meanIO, group = Village, color = Village))+
+  geom_point()
+
+HH_4 %>% group_by(Village, Position, hour) %>% 
+  get_summary_stats(c(BC,BCbb, BCff), type = "mean_sd") %>% 
+  ggplot(.,aes(x = hour, y = mean, fill= variable))+
+  geom_area()+
+  facet_grid(Village~Position)
+
+
+HH_4 %>% group_by(Village, Position, hour) %>% 
+  get_summary_stats(c(BC,BCbb, BCff, PM2.5), type = "mean_sd") %>% 
+  mutate(row = row_number()) %>% 
+  pivot_wider(names_from = "Position", values_from = c("mean","sd"))%>% 
+  ggplot(.,aes(x = hour, y = mean_Indoor, group = Village, color = Village))+
+  geom_point()+
+  facet_wrap(~variable, ncol = 1, scales = "free_y")
+  
+
+```
+
+### Statistical Analysis
+
+Concentration During Cooking Period
+```{r}
+
+HH_4 %>% 
+  timeVariation(.,pollutant = "BC", group = "Position")
+
+
+
+```
+
+```{r}
+HH_3 %>% 
+  group_by(House) %>% 
+  summarise(minBC = min(BC),
+            maxBC = max(BC),
+            avgBC = mean(BC),
+            sdBC = sd(BC))
+```
+
+
+```{r}
+HH_3 %>% 
+  ggplot(.,aes(x = BC))+
+  geom_density()+
+  facet_grid(House~activity)
+
+HH_3 %>% 
+  ggplot(.,aes(x = date, y = BC))+
+  geom_point()
+
+HH_3 %>% 
+  filter(BC<1) %>% 
+  ggplot(.,aes(x = BC))+
+  geom_histogram()+
+  facet_grid(House~DayPart)
+
+HH_3 %>% filter(BC>0.2) %>% 
+  ggplot(.,aes(y = House, x = BC))+
+  geom_boxplot()+
+  facet_grid(~activity)
+
+HH_3 %>% filter(BC>0.3) %>% 
+  group_by(House) %>% 
+  summarise(n = n(), 
+            day = n_distinct(dDate))
+
+HH_3 %>% filter(BC<0.4) %>% 
+  ggplot(.,aes(x = date, y = T))+
+  geom_point()
+
+HH_3 %>% filter(BC>0.4) %>% 
+  select(hour, activity, House, BC) %>% 
+  mutate(row = row_number()) %>% 
+  separate(House, into = c("Village","Position"), sep = "_") %>%
+  pivot_wider(names_from = "Position", values_from = "BC") %>% 
+  group_by(Village, hour, activity) %>% 
+  summarise(meanIN = mean(Indoor, na.rm=TRUE),
+            meanOUT = mean(Outdoor, na.rm=TRUE)) %>% 
+  ggplot(.,aes(x = meanIN, y = meanOUT, group = Village, color = activity))+
+  geom_point()+
+  facet_grid(~Village)
+
+
+```
+
+
+### BC Concentration Timeline
+```{r echo=FALSE}
+HH_3 %>% 
+  ggplot(.,aes(x = date, y = BC, group = House, color = House))+
+  geom_point(size = 0.5)+
+  #facet_wrap(~House, ncol = 1)+
+  theme_pubr()
+
+
+
+
+```
+
+
+**Notes:**
+* Challenges identified for in-situ measurement as BC concentration can go high
+* Data Filtered:
+  - Bad data points: instrument choked due to severe concentration levels
+  - IQR Criteria utilized for **Outlier removal** (1.5 times Q1 and Q3)
+* Concurrent measurements were limited
+
+
+### Diurnal Concentration Profile of BC
+
+```{r, echo=FALSE}
+plotTV_BC = HH_3 %>% timeVariation(pollutant = "BC")
+plot(plotTV_BC, subset="hour")
+```
+
+
+**Notes:**
+* 5 min BC -> Hourly average 
+* Effect of emission
+  - Cooking source during morning and evening period enhanced pollutant concentration
+  - Post cooking decay of pollutant
+* Effect of Atmosphere
+  - PBL height reduced BC concentration
+
+
+### BC concentration by activity period
+```{r echo=FALSE}
+HH_3 %>% ggplot(.,aes(x = activity, y = BC))+
+  geom_boxplot()+
+  theme_pubr()
+```
+```{r echo=FALSE}
+meanBC = HH_3 %>% group_by(activity) %>% 
+  summarise(meanBC = mean(BC),
+            meanBCbb = mean(BCbb),
+            meanBCff = mean(BCff)) %>% 
+  ungroup()
+
+meanBC %>% 
+  mutate(pctChBC = (meanBC - last(meanBC))/last(meanBC)*100,
+         pctChBCbb = (meanBCbb - last(meanBCbb))/last(meanBCbb)*100,
+         pctChBCff = (meanBCff - last(meanBCff))/last(meanBCff)*100) %>% 
+  filter(activity != "NoCook") %>% 
+    kable(digits = 2) %>% 
+  kable_styling()
+
+
+```
+
+
+**Notes:**
+* percentage change in all BC components are same!
+
+
+### BC Apportionment Results
+
+```{r echo=FALSE}
+HH_3 %>% 
+  select(House, activity, BC, BCbb, BCff,BB) %>% 
+  pivot_longer(cols = c(BC,BCbb,BCff,BB), names_to = "parameter",values_to = "values") %>%
+  ggplot(.,aes(x = values))+
+  geom_histogram(fill="#FF6666",colour="black")+
+  facet_grid(activity~parameter, scales = "free")+
+  theme_pubr()
+  
+```
+
+
+
+**Notes:**
+* BB distribution remains almost similar centering 94.16%
+
+
+
+```{r echo=FALSE}
+HH_3 %>% 
+  select(House, DayPart, BC, BCbb, BCff,BB) %>% 
+  pivot_longer(cols = c(BC,BCbb,BCff,BB), names_to = "parameter",values_to = "values") %>%
+  ggplot(.,aes(x = values))+
+  geom_histogram(fill="#FF6666",colour="black")+
+  facet_grid(DayPart~parameter, scales = "free")+
+  theme_pubr()
+  
+```
+
+
+**Notes:**
+* No visible change in BB/FF separation during parts of day
+
+
+### AAE
+
+```{r echo=FALSE}
+
+HH_3 %>% 
+  ggplot(.,aes(x = House, y = AAE_Blue_IR, fill = activity))+
+  geom_boxplot()+
+  theme_classic()
+
+```
+
+
+**Notes:**
+* Negative AAE values observed
+
+### Indoor - Outdoor
+```{r echo=FALSE}
+HH_3 %>% 
+  separate(House, into = c("Village","Position"), sep = "_") %>% 
+  group_by(activity, Position) %>% 
+  summarise(AAE = mean(AAE_Blue_IR),
+            BC = mean(BC),
+            BCbb = mean(BCbb)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = "Position", values_from = c("AAE","BC","BCbb")) %>%
+  rowwise() %>% 
+  mutate(AAE_pctCh = 100*(AAE_Indoor - AAE_Outdoor)/AAE_Outdoor,
+         BC_pctCh = 100*(BC_Indoor - BC_Outdoor)/BC_Outdoor,
+         BCbb_pctCh = 100*(BCbb_Indoor - BCbb_Outdoor)/BCbb_Outdoor) %>% 
+  select(activity, AAE_Indoor, AAE_Outdoor, AAE_pctCh,BC_pctCh,BCbb_pctCh) %>% 
+  kable(digits = 2) %>% 
+  kable_styling()
+  
+```
+
+
+**Notes:**
+* BC concentration during morning cooking increased by 12% (highest observed)
+* During **NoCook** period BC concentration lowered by 4.6% than the outdoor -> infiltration process
+* AAE increased by 10.34% during Morning Cooking session -> Use of SBF can be confirmed
+* Percentage change in BCbb was not dominant - issue with SA fraction. 
+
+
+
+### BC concentration by Location~Activity
+```{r echo=FALSE}
+HH_3 %>% ggplot(.,aes(x = activity, y = BC, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+
+### BC concentration by DayPart~Activity
+```{r echo=FALSE}
+HH_3 %>% ggplot(.,aes(x = DayPart, y = BC, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+## Source Apportionment Results
+
+### BCbb by Location~Activity
+```{r echo=FALSE}
+HH_3 %>% ggplot(.,aes(x = activity, y = BCbb, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+### BCff by DayPart~Activity
+```{r echo=TRUE}
+HH_3 %>% ggplot(.,aes(x = DayPart, y = BCff, fill = House))+
+  geom_boxplot(position=position_dodge(0.8))+
+  theme_pubr()
+
+```
+
+
+
+
+
+
+# Other Pollutants
+
+## Diurnal Variation
 ### Diurnal PM2.5
 
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
@@ -325,44 +773,7 @@ unnaoHour %>% select(date, House, PM2.5) %>%
   theme_pubr()
 ```
 
-## Analysis of BC concentration
 
-### BC concentration by activity period
-```{r echo=TRUE}
-HH_3 %>% ggplot(.,aes(x = activity, y = BC))+
-  geom_boxplot()+
-  theme_pubr()
-```
-### BC concentration by Location~Activity
-```{r echo=TRUE}
-HH_3 %>% ggplot(.,aes(x = activity, y = BC, fill = House))+
-  geom_boxplot(position=position_dodge(0.8))+
-  theme_pubr()
-
-```
-### BC concentration by DayPart~Activity
-```{r echo=TRUE}
-HH_3 %>% ggplot(.,aes(x = DayPart, y = BC, fill = House))+
-  geom_boxplot(position=position_dodge(0.8))+
-  theme_pubr()
-
-```
-## Source Apportionment Results
-
-### BCbb by Location~Activity
-```{r echo=TRUE}
-HH_3 %>% ggplot(.,aes(x = activity, y = BCbb, fill = House))+
-  geom_boxplot(position=position_dodge(0.8))+
-  theme_pubr()
-
-```
-### BCff by DayPart~Activity
-```{r echo=TRUE}
-HH_3 %>% ggplot(.,aes(x = DayPart, y = BCff, fill = House))+
-  geom_boxplot(position=position_dodge(0.8))+
-  theme_pubr()
-
-```
 
 
 ## Spatial Data
